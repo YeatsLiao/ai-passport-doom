@@ -1,0 +1,23 @@
+# Build artifacts
+build/
+sdkconfig
+sdkconfig.old
+
+# WAD binary (large, not for GitHub)
+DOOM1.WAD
+*.wad
+
+# Process notes (local only)
+过程文章/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
+
+# ESP-IDF
+dependencies.lock
+managed_components/
