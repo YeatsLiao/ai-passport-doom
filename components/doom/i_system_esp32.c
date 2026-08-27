@@ -25,6 +25,7 @@
 #include "bsp_doom.h"
 #include "bsp_pins.h"
 #include "esp_log.h"
+#include "i_sound.h"
 
 static const char *TAG = "doom_plat";
 
@@ -57,6 +58,13 @@ static inline unsigned short bswap16(unsigned short v)
 // ==============================================================
 // Platform interface (i_system_e32.h)
 // ==============================================================
+
+// I_Init: called before Z_Init, inits sound subsystem.
+// (Replaces the one in i_main.c which also has main() we can't use)
+void I_Init(void)
+{
+    I_InitSound();
+}
 
 void I_InitScreen_e32(void)
 {
