@@ -56,4 +56,12 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
     -Wno-error=pointer-sign
     -Wno-error=implicit-function-declaration
     -Wno-error=incompatible-pointer-types
+    -Wno-error=uninitialized
+    -Wno-error=unused-but-set-parameter
+    -Wno-error=misleading-indentation
+    -Wno-error=return-type
+    -Wno-error=address
+    -Wno-error=array-bounds
+    -Wno-error=stringop-overflow
+    -Wno-error=stringop-overread
 )
