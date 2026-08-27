@@ -9,6 +9,7 @@
 #include "esp_system.h"
 
 #include "bsp_doom.h"
+#include "doomtype.h"
 #include "i_system_e32.h"
 
 // GBADoom engine entry points (from i_main.c / d_main.c)
