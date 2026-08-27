@@ -64,4 +64,6 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
     -Wno-error=array-bounds
     -Wno-error=stringop-overflow
     -Wno-error=stringop-overread
+    -Wno-error=parentheses
+    -Wno-error=comment
 )

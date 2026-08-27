@@ -17,11 +17,13 @@
 #include "doomdef.h"
 #include "doomtype.h"
 #include "d_event.h"
+#include "d_main.h"
 #include "global_data.h"
 #include "i_system_e32.h"
 #include "lprintf.h"
 
 #include "bsp_doom.h"
+#include "bsp_pins.h"
 #include "esp_log.h"
 
 static const char *TAG = "doom_plat";

@@ -15,7 +15,7 @@
 #include <string.h>
 #include "esp_log.h"
 #include "esp_partition.h"
-#include "esp_spi_flash.h"
+#include "spi_flash_mmap.h"
 #include "doom_iwad.h"
 
 static const char *TAG = "doom_wad";
