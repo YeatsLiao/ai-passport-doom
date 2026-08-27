@@ -1,6 +1,10 @@
 // main.c - AI-Passport Doom: app entry point
 // Spawns the GBADoom engine as a FreeRTOS task.
 
+// doomtype.h must come before FreeRTOS/stdbool.h to avoid macro conflicts
+// (FreeRTOS defines false/true as macros, breaking doomtype.h's boolean enum)
+#include "doomtype.h"
+
 #include <stdio.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -9,7 +13,6 @@
 #include "esp_system.h"
 
 #include "bsp_doom.h"
-#include "doomtype.h"
 #include "i_system_e32.h"
 
 // GBADoom engine entry points (from i_main.c / d_main.c)
