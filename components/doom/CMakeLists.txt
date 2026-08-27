@@ -50,4 +50,10 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
     -Wno-implicit-fallthrough
     -Wno-maybe-uninitialized
     -Wno-stringop-truncation
+    -Wno-error=unused-value
+    -Wno-error=switch
+    -Wno-error=enum-compare
+    -Wno-error=pointer-sign
+    -Wno-error=implicit-function-declaration
+    -Wno-error=incompatible-pointer-types
 )
