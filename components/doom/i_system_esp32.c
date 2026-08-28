@@ -50,9 +50,11 @@ clock_t __wrap_clock(void)
 /* ---- Framebuffers ---- */
 // The engine renders 240x160 8-BIT palette indices (SCREENWIDTH=120 in
 // doomdef.h is measured in shorts; byte pitch is 240). s_backbuffer holds
-// those indices; s_rgb565 is the converted 16bpp staging buffer we blit.
+// those indices. To save RAM (ESP32-C3 has ~300KB total, engine eats ~115KB)
+// we do NOT allocate a full 75KB RGB565 staging buffer. Instead we convert
+// 10 rows at a time into a tiny line buffer and blit strip-by-strip.
 static unsigned short *s_backbuffer;   // 240*160 bytes (engine writes here)
-static unsigned short *s_rgb565;       // 240*160 shorts (converted pixels)
+static unsigned short *s_linebuf;      // 240*STRIP_H shorts (temp staging)
 
 /* ---- Palette ---- */
 // Store palette as RGB565 shorts (matching ST7789 native format)
@@ -69,6 +71,7 @@ static int s_last_btn = -1;   // -1 = no button
 #define DOOM_FB_H      160
 #define DOOM_X_OFFSET  ((BSP_LCD_W - DOOM_FB_W) / 2)
 #define DOOM_Y_OFFSET  ((BSP_LCD_H - DOOM_FB_H) / 2)
+#define DOOM_STRIP_H   10   // rows per blit (4.7KB line buffer)
 
 /* ---- Byte swap for SPI (LE CPU -> BE display) ---- */
 static inline unsigned short bswap16(unsigned short v)
@@ -97,23 +100,26 @@ void I_CreateBackBuffer_e32(void)
 {
     // Engine framebuffer: 240x160 bytes of palette indices
     s_backbuffer = malloc(DOOM_FB_W * DOOM_FB_H);
-    // Staging buffer: converted RGB565 pixels for SPI blit
-    s_rgb565 = malloc(DOOM_FB_W * DOOM_FB_H * sizeof(unsigned short));
+    // Small line buffer: convert STRIP_H rows at a time (saves ~70KB RAM)
+    s_linebuf = malloc(DOOM_FB_W * DOOM_STRIP_H * sizeof(unsigned short));
 
-    if (!s_backbuffer || !s_rgb565) {
-        ESP_LOGE(TAG, "Framebuffer alloc failed!");
+    if (!s_backbuffer || !s_linebuf) {
+        ESP_LOGE(TAG, "Framebuffer alloc failed! backbuffer=%p linebuf=%p",
+                 s_backbuffer, s_linebuf);
         abort();
     }
 
     memset(s_backbuffer, 0, DOOM_FB_W * DOOM_FB_H);
-    memset(s_rgb565, 0, DOOM_FB_W * DOOM_FB_H * 2);
 
-    ESP_LOGI(TAG, "Framebuffer: %p (%d bytes 8bpp) + %p (rgb565)",
-             s_backbuffer, DOOM_FB_W * DOOM_FB_H, s_rgb565);
+    ESP_LOGI(TAG, "Framebuffer: %p (%d bytes 8bpp) + %p (linebuf %d shorts)",
+             s_backbuffer, DOOM_FB_W * DOOM_FB_H,
+             s_linebuf, DOOM_FB_W * DOOM_STRIP_H);
 
     // Clear the whole 240x320 panel (leftovers from previous firmware)
-    for (int y = 0; y < BSP_LCD_H; y += DOOM_FB_H) {
-        bsp_display_draw_bitmap(0, y, BSP_LCD_W, DOOM_FB_H, s_rgb565);
+    memset(s_linebuf, 0, DOOM_FB_W * DOOM_STRIP_H * sizeof(unsigned short));
+    for (int y = 0; y < BSP_LCD_H; y += DOOM_STRIP_H) {
+        int h = (y + DOOM_STRIP_H > BSP_LCD_H) ? BSP_LCD_H - y : DOOM_STRIP_H;
+        bsp_display_draw_bitmap(0, y, BSP_LCD_W, h, s_linebuf);
     }
 
     I_FinishUpdate_e32(NULL, NULL, 0, 0);
@@ -167,12 +173,13 @@ void I_SetPallete_e32(const byte *palette)
 
 /*
  * I_FinishUpdate_e32 - Convert the 240x160 8bpp index buffer to RGB565
- * and flush it to the ST7789 display.
+ * and flush it to the ST7789 display. Uses a small line buffer to avoid
+ * allocating a full 75KB staging buffer.
  */
 void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
                         const unsigned int width, const unsigned int height)
 {
-    if (!s_backbuffer || !s_rgb565) return;
+    if (!s_backbuffer || !s_linebuf) return;
 
     // D_DoomLoop runs the engine flat-out; yield once every few frames so
     // the IDLE task can feed the task watchdog.
@@ -181,21 +188,25 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
         vTaskDelay(1);
     }
 
-    // 8bpp palette indices -> RGB565 via the preconverted palette
     const byte *src = (const byte *)s_backbuffer;
-    unsigned short *dst = s_rgb565;
-    const int npix = DOOM_FB_W * DOOM_FB_H;
+    const int base_y = DOOM_Y_OFFSET;
 
-    for (int i = 0; i < npix; i++) {
-        dst[i] = s_palette[src[i]];
+    // Convert and blit in strips of DOOM_STRIP_H rows
+    for (int y = 0; y < DOOM_FB_H; y += DOOM_STRIP_H) {
+        int h = (y + DOOM_STRIP_H > DOOM_FB_H) ? DOOM_FB_H - y : DOOM_STRIP_H;
+        int npix = DOOM_FB_W * h;
+        const byte *row_src = src + y * DOOM_FB_W;
+
+        for (int i = 0; i < npix; i++) {
+            s_linebuf[i] = s_palette[row_src[i]];
+        }
+
+        bsp_display_draw_bitmap(
+            DOOM_X_OFFSET, base_y + y,
+            DOOM_FB_W, h,
+            s_linebuf
+        );
     }
-
-    // Blit 240x160 framebuffer vertically centered on 240x320 display
-    bsp_display_draw_bitmap(
-        DOOM_X_OFFSET, DOOM_Y_OFFSET,
-        DOOM_FB_W, DOOM_FB_H,
-        s_rgb565
-    );
 }
 
 /*
@@ -261,17 +272,19 @@ void I_Error(const char *error, ...)
 
     ESP_LOGE("DOOM", "I_Error: %s", msg);
 
-    // Draw red error screen (fill the rgb565 staging buffer)
-    if (s_rgb565) {
-        for (int i = 0; i < DOOM_FB_W * DOOM_FB_H; i++) {
-            // Red in byte-swapped RGB565: 0xF800 -> bswap -> 0x00F8
-            s_rgb565[i] = bswap16(0xF800);
+    // Draw red error screen (use line buffer if available, else just log)
+    if (s_linebuf) {
+        for (int i = 0; i < DOOM_FB_W * DOOM_STRIP_H; i++) {
+            s_linebuf[i] = bswap16(0xF800);
         }
-        bsp_display_draw_bitmap(
-            DOOM_X_OFFSET, DOOM_Y_OFFSET,
-            DOOM_FB_W, DOOM_FB_H,
-            s_rgb565
-        );
+        for (int y = 0; y < DOOM_FB_H; y += DOOM_STRIP_H) {
+            int h = (y + DOOM_STRIP_H > DOOM_FB_H) ? DOOM_FB_H - y : DOOM_STRIP_H;
+            bsp_display_draw_bitmap(
+                DOOM_X_OFFSET, DOOM_Y_OFFSET + y,
+                DOOM_FB_W, h,
+                s_linebuf
+            );
+        }
     }
 
     // Halt forever
