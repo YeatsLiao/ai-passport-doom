@@ -209,22 +209,21 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
  * I_ProcessKeyEvents - Poll ADC buttons and post Doom events.
  *
  * Simple 3-button mapping, no modes, no long press:
- *   UP   -> KEYD_UP     (forward)
- *   DOWN -> KEYD_RIGHT  (turn right)
- *   OK   -> KEYD_B + KEYD_A  (fire + use simultaneously)
+ *   UP   -> KEYD_UP           (forward)
+ *   DOWN -> KEYD_RIGHT + KEYD_A  (turn right + use/confirm/menu enter)
+ *   OK   -> KEYD_B            (fire)
  *
- * KEYD_B = fire, KEYD_A = use/open door. They coexist because
- * key_use is decoupled from the speed modifier in g_game.c.
- * Limitation: no turn-left or backward button (3 buttons only).
+ * KEYD_A is shared between DOWN (use/confirm) and menu navigation.
+ * On the title screen or in menus, pressing DOWN confirms selection.
+ * In gameplay, DOWN turns right and also triggers BT_USE near doors.
  */
 void I_ProcessKeyEvents(void)
 {
     bsp_btn_t btn;
     int cur = bsp_button_read(&btn);
 
-    // Track which doom keys are currently held per physical button
-    static int key_a_held = 0;  // KEYD_A (use) from OK button
-    static int key_b_held = 0;  // KEYD_B (fire) from OK button
+    // Track which extra doom keys are held
+    static int down_a_held = 0;  // KEYD_A from DOWN button
 
     if (cur != s_last_btn) {
         // --- Button changed: release old, press new ---
@@ -234,11 +233,16 @@ void I_ProcessKeyEvents(void)
             event_t ev = { .type = ev_keyup, .data1 = KEYD_UP };
             D_PostEvent(&ev);
         } else if (s_last_btn == BSP_BTN_DOWN) {
-            event_t ev = { .type = ev_keyup, .data1 = KEYD_RIGHT };
-            D_PostEvent(&ev);
+            event_t ev_r = { .type = ev_keyup, .data1 = KEYD_RIGHT };
+            D_PostEvent(&ev_r);
+            if (down_a_held) {
+                event_t ev_a = { .type = ev_keyup, .data1 = KEYD_A };
+                D_PostEvent(&ev_a);
+                down_a_held = 0;
+            }
         } else if (s_last_btn == BSP_BTN_OK) {
-            if (key_b_held) { event_t ev = { .type = ev_keyup, .data1 = KEYD_B }; D_PostEvent(&ev); key_b_held = 0; }
-            if (key_a_held) { event_t ev = { .type = ev_keyup, .data1 = KEYD_A }; D_PostEvent(&ev); key_a_held = 0; }
+            event_t ev = { .type = ev_keyup, .data1 = KEYD_B };
+            D_PostEvent(&ev);
         }
 
         // Press new button
@@ -246,18 +250,17 @@ void I_ProcessKeyEvents(void)
             event_t ev = { .type = ev_keydown, .data1 = KEYD_UP };
             D_PostEvent(&ev);
         } else if (cur == BSP_BTN_DOWN) {
-            event_t ev = { .type = ev_keydown, .data1 = KEYD_RIGHT };
-            D_PostEvent(&ev);
-        } else if (cur == BSP_BTN_OK) {
-            // Fire + Use together
-            event_t ev_b = { .type = ev_keydown, .data1 = KEYD_B };
+            // Turn right + use/confirm
+            event_t ev_r = { .type = ev_keydown, .data1 = KEYD_RIGHT };
             event_t ev_a = { .type = ev_keydown, .data1 = KEYD_A };
-            D_PostEvent(&ev_b);
+            D_PostEvent(&ev_r);
             D_PostEvent(&ev_a);
-            key_b_held = 1;
-            key_a_held = 1;
+            down_a_held = 1;
+        } else if (cur == BSP_BTN_OK) {
+            // Fire only
+            event_t ev = { .type = ev_keydown, .data1 = KEYD_B };
+            D_PostEvent(&ev);
         }
-        // cur == -1: no button, nothing to press
 
         s_last_btn = cur;
     }
