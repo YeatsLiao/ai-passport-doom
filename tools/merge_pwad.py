@@ -19,15 +19,34 @@ from pathlib import Path
 
 
 def read_wad(path: Path):
-    data = path.read_bytes()
+    data = bytearray(path.read_bytes())
     magic, numlumps, dirofs = struct.unpack_from("<4sII", data, 0)
+    # Uppercase every lump name in the directory. Stock DOOM1.WAD has a
+    # known defect: PNAMES entry 162 is lowercase "w94_1". GBADoom's
+    # FindLumpByName compares names byte-exact (no case folding), so the
+    # lowercase entry can never match the W94_1 lump and the engine aborts.
+    for i in range(numlumps):
+        off = dirofs + i * 16 + 8
+        data[off:off + 8] = bytes(data[off:off + 8]).upper()
     entries = []
     for i in range(numlumps):
         off = dirofs + i * 16
         lump_ofs, lump_size = struct.unpack_from("<II", data, off)
         name = data[off + 8 : off + 16].split(b"\x00")[0]
         entries.append((lump_ofs, lump_size, name))
-    return magic, data, entries
+
+    # Also fix the name table INSIDE the PNAMES lump (the real bug site):
+    # R_LoadTexture reads patch names straight from PNAMES data with no
+    # case folding, so the lowercase "w94_1" entry must be uppercased.
+    for ofs, size, name in reversed(entries):
+        if name == b"PNAMES" and size >= 4:
+            count = struct.unpack_from("<I", data, ofs)[0]
+            for j in range(count):
+                noff = ofs + 4 + j * 8
+                data[noff:noff + 8] = bytes(data[noff:noff + 8]).upper()
+            break
+
+    return magic, bytes(data), entries
 
 
 def main() -> int:

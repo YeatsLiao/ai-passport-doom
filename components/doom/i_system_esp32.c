@@ -25,9 +25,26 @@
 #include "bsp_doom.h"
 #include "bsp_pins.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "i_sound.h"
 
 static const char *TAG = "doom_plat";
+
+/* ---- Time base ----
+ * GBADoom's non-GBA I_GetTime() derives game tics from clock() (newlib).
+ * On ESP-IDF, newlib's clock() always returns 0, which makes the engine's
+ * timing loops (TryRunTics / D_Wipe) busy-spin forever and starve the IDLE
+ * task (task watchdog). Redirect clock() here via the linker --wrap option
+ * (see CMakeLists.txt). Must return MICROseconds: I_GetTime divides the
+ * clock value by CLOCKS_PER_SEC/TICRATE (~28571), so anything coarser than
+ * microseconds rounds down to 0 and the engine sees time stand still.
+ */
+clock_t __wrap_clock(void)
+{
+    return (clock_t)esp_timer_get_time();
+}
 
 /* ---- Framebuffers ---- */
 // SCREENWIDTH=120, SCREENHEIGHT=160, unsigned short = 2 bytes
@@ -146,6 +163,13 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
                         const unsigned int width, const unsigned int height)
 {
     if (!s_backbuffer) return;
+
+    // D_DoomLoop runs the engine flat-out; yield once every few frames so
+    // the IDLE task can feed the task watchdog.
+    static unsigned int frame_count;
+    if ((++frame_count & 0x3) == 0) {
+        vTaskDelay(1);
+    }
 
     // Blit 120x160 framebuffer centered on 240x320 display
     bsp_display_draw_bitmap(

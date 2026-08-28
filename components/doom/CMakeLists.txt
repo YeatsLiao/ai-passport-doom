@@ -67,3 +67,8 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
     -Wno-error=parentheses
     -Wno-error=comment
 )
+
+# Redirect newlib clock() to __wrap_clock in i_system_esp32.c.
+# GBADoom's I_GetTime uses clock(); newlib's version returns 0 on ESP32,
+# which deadlocks the engine's timing loops.
+target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=clock")
