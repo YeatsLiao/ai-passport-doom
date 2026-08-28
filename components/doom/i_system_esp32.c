@@ -208,10 +208,11 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
 /*
  * I_ProcessKeyEvents - Poll ADC buttons and post Doom events.
  *
- * Button mapping (3-button landscape):
+ * Button mapping (3-button):
  *   UP   -> KEYD_UP     (forward)
  *   DOWN -> KEYD_RIGHT  (turn right)
- *   OK   -> KEYD_A      (fire / use)
+ *   OK   -> KEYD_B      (fire)
+ *   Note: KEYD_A = use/open door, currently unmapped (need 4th button)
  */
 void I_ProcessKeyEvents(void)
 {
@@ -227,7 +228,7 @@ void I_ProcessKeyEvents(void)
             switch (s_last_btn) {
                 case BSP_BTN_UP:   ev.data1 = KEYD_UP;    break;
                 case BSP_BTN_DOWN: ev.data1 = KEYD_RIGHT; break;
-                case BSP_BTN_OK:   ev.data1 = KEYD_A;     break;
+                case BSP_BTN_OK:   ev.data1 = KEYD_B;     break;
                 default: return;
             }
             D_PostEvent(&ev);
@@ -239,7 +240,7 @@ void I_ProcessKeyEvents(void)
             switch (cur) {
                 case BSP_BTN_UP:   ev.data1 = KEYD_UP;    break;
                 case BSP_BTN_DOWN: ev.data1 = KEYD_RIGHT; break;
-                case BSP_BTN_OK:   ev.data1 = KEYD_A;     break;
+                case BSP_BTN_OK:   ev.data1 = KEYD_B;     break;
                 default: return;
             }
             D_PostEvent(&ev);
