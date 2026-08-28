@@ -50,10 +50,9 @@ clock_t __wrap_clock(void)
 /* ---- Framebuffers ---- */
 // The engine renders 240x160 8-BIT palette indices (SCREENWIDTH=120 in
 // doomdef.h is measured in shorts; byte pitch is 240). s_backbuffer holds
-// those indices. We rotate 90° CW for landscape display and convert in
-// strips to save RAM (ESP32-C3 has ~300KB total, engine eats ~115KB).
+// those indices. We convert to RGB565 in strips to save RAM.
 static unsigned short *s_backbuffer;   // FB_W * FB_H bytes (engine writes here)
-static unsigned short *s_linebuf;      // ROT_W * STRIP_H shorts (rotated strip)
+static unsigned short *s_linebuf;      // FB_W * STRIP_H shorts (strip staging)
 
 /* ---- Palette ---- */
 // Store palette as RGB565 shorts (matching ST7789 native format)
@@ -63,15 +62,13 @@ static unsigned short s_palette[256];
 static int s_last_btn = -1;   // -1 = no button
 
 /* ---- Display geometry ----
- * Doom source: 240x160 (8bpp). Rotated 90° CW for landscape on 240x320 panel.
- * Result on screen: 160 wide x 240 tall, centered at (40, 40).
+ * Doom renders 240x160 (8bpp), screen is 240x320.
+ * Full width, vertically centered at y=80.
  */
 #define FB_W           240    // engine framebuffer width (bytes)
 #define FB_H           160    // engine framebuffer height
-#define ROT_W          160    // display width after 90° CW rotation (= FB_H)
-#define ROT_H          240    // display height after 90° CW rotation (= FB_W)
-#define DISP_X_OFF     ((BSP_LCD_W - ROT_W) / 2)  // 40
-#define DISP_Y_OFF     ((BSP_LCD_H - ROT_H) / 2)  // 40
+#define DISP_X_OFF     0      // full width
+#define DISP_Y_OFF     ((BSP_LCD_H - FB_H) / 2)  // 80
 #define STRIP_H        10     // source rows per blit strip
 
 /* ---- Byte swap for SPI (LE CPU -> BE display) ---- */
@@ -101,9 +98,8 @@ void I_CreateBackBuffer_e32(void)
 {
     // Engine framebuffer: 240x160 bytes of palette indices
     s_backbuffer = malloc(FB_W * FB_H);
-    // Rotated strip buffer: ROT_W * STRIP_H shorts (3.2KB per strip)
-    // After 90° CW: source (240 x sh) -> rotated (160 x sh) = ROT_W wide, sh tall
-    s_linebuf = malloc(ROT_W * STRIP_H * sizeof(unsigned short));
+    // Strip staging buffer: FB_W * STRIP_H shorts (4.7KB per strip)
+    s_linebuf = malloc(FB_W * STRIP_H * sizeof(unsigned short));
 
     if (!s_backbuffer || !s_linebuf) {
         ESP_LOGE(TAG, "Framebuffer alloc failed! backbuffer=%p linebuf=%p",
@@ -113,12 +109,12 @@ void I_CreateBackBuffer_e32(void)
 
     memset(s_backbuffer, 0, FB_W * FB_H);
 
-    ESP_LOGI(TAG, "FB: %p (%d bytes 8bpp) + %p (rotbuf %dx%d shorts)",
+    ESP_LOGI(TAG, "FB: %p (%d bytes 8bpp) + %p (linebuf %dx%d shorts)",
              s_backbuffer, FB_W * FB_H,
-             s_linebuf, ROT_W, STRIP_H);
+             s_linebuf, FB_W, STRIP_H);
 
     // Clear the whole 240x320 panel (leftovers from previous firmware)
-    memset(s_linebuf, 0, ROT_W * STRIP_H * sizeof(unsigned short));
+    memset(s_linebuf, 0, FB_W * STRIP_H * sizeof(unsigned short));
     for (int y = 0; y < BSP_LCD_H; y += STRIP_H) {
         int h = (y + STRIP_H > BSP_LCD_H) ? BSP_LCD_H - y : STRIP_H;
         bsp_display_draw_bitmap(0, y, BSP_LCD_W, h, s_linebuf);
@@ -174,12 +170,8 @@ void I_SetPallete_e32(const byte *palette)
 }
 
 /*
- * I_FinishUpdate_e32 - Convert 240x160 8bpp to RGB565 with 90° CW rotation
- * and blit to display in strips.
- *
- * 90° CW mapping: source (sx, sy) -> display (sy, FB_W-1-sx)
- * Each strip of source rows [y..y+sh) becomes a ROT_W(160) x sh block on screen.
- * Buffer layout: stride = STRIP_H (columns), FB_W rows -> s_linebuf[sx * STRIP_H + dy]
+ * I_FinishUpdate_e32 - Convert the 240x160 8bpp index buffer to RGB565
+ * and flush it to the ST7789 display in strips (no rotation).
  */
 void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
                         const unsigned int width, const unsigned int height)
@@ -195,24 +187,19 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
 
     const byte *src = (const byte *)s_backbuffer;
 
-    // Convert and blit in strips of STRIP_H source rows, rotated 90° CW
+    // Convert and blit in strips of STRIP_H rows (no rotation)
     for (int y = 0; y < FB_H; y += STRIP_H) {
         int sh = (y + STRIP_H > FB_H) ? FB_H - y : STRIP_H;
+        int npix = FB_W * sh;
+        const byte *row_src = src + y * FB_W;
 
-        // Build rotated strip: ROT_W(160) rows x sh columns, stride = STRIP_H.
-        // 90° CW: source (sx, y+c) -> dest row=sy, col=(sh-1-c).
-        // Outer loop over dest rows (= source columns) for sequential writes.
-        for (int sy = 0; sy < FB_H; sy++) {
-            for (int c = 0; c < sh; c++) {
-                s_linebuf[sy * STRIP_H + (sh - 1 - c)] =
-                    s_palette[src[(y + c) * FB_W + sy]];
-            }
+        for (int i = 0; i < npix; i++) {
+            s_linebuf[i] = s_palette[row_src[i]];
         }
 
-        // Blit: 160 wide (ROT_W) x sh tall, centered on 240x320 display
         bsp_display_draw_bitmap(
             DISP_X_OFF, DISP_Y_OFF + y,
-            ROT_W, sh,
+            FB_W, sh,
             s_linebuf
         );
     }
@@ -278,16 +265,16 @@ void I_Error(const char *error, ...)
 
     ESP_LOGE("DOOM", "I_Error: %s", msg);
 
-    // Draw red error screen (rotated strips)
+    // Draw red error screen (strip-based, no rotation)
     if (s_linebuf) {
-        for (int i = 0; i < ROT_W * STRIP_H; i++) {
+        for (int i = 0; i < FB_W * STRIP_H; i++) {
             s_linebuf[i] = bswap16(0xF800);
         }
         for (int y = 0; y < FB_H; y += STRIP_H) {
             int sh = (y + STRIP_H > FB_H) ? FB_H - y : STRIP_H;
             bsp_display_draw_bitmap(
                 DISP_X_OFF, DISP_Y_OFF + y,
-                ROT_W, sh,
+                FB_W, sh,
                 s_linebuf
             );
         }
