@@ -62,14 +62,16 @@ static unsigned short s_palette[256];
 static int s_last_btn = -1;   // -1 = no button
 
 /* ---- Display geometry ----
- * Doom renders 240x160 (8bpp), screen is 240x320.
- * Full width, vertically centered at y=80.
+ * Doom renders 240x160 (8bpp), physical panel is 240x320.
+ * We scale 2x VERTICALLY so the game fills the whole panel: each game row
+ * is drawn as two display rows (VSCALE=2). Fullscreen removes the centered
+ * window boundary that produced the bottom HUD overlap artifact.
  */
 #define FB_W           240    // engine framebuffer width (bytes)
 #define FB_H           160    // engine framebuffer height
 #define DISP_X_OFF     0      // full width
-#define DISP_Y_OFF     ((BSP_LCD_H - FB_H) / 2)  // 80
-#define STRIP_H        10     // source rows per blit strip
+#define VSCALE         2      // vertical scale: 160 game rows -> 320 display
+#define STRIP_H        8      // source (game) rows converted per blit strip
 
 /* ---- Byte swap for SPI (LE CPU -> BE display) ---- */
 static inline unsigned short bswap16(unsigned short v)
@@ -98,8 +100,8 @@ void I_CreateBackBuffer_e32(void)
 {
     // Engine framebuffer: 240x160 bytes of palette indices
     s_backbuffer = malloc(FB_W * FB_H);
-    // Strip staging buffer: FB_W * STRIP_H shorts (4.7KB per strip)
-    s_linebuf = malloc(FB_W * STRIP_H * sizeof(unsigned short));
+    // Strip staging buffer: FB_W * STRIP_H * VSCALE shorts (2x vertical)
+    s_linebuf = malloc(FB_W * STRIP_H * VSCALE * sizeof(unsigned short));
 
     if (!s_backbuffer || !s_linebuf) {
         ESP_LOGE(TAG, "Framebuffer alloc failed! backbuffer=%p linebuf=%p",
@@ -111,10 +113,10 @@ void I_CreateBackBuffer_e32(void)
 
     ESP_LOGI(TAG, "FB: %p (%d bytes 8bpp) + %p (linebuf %dx%d shorts)",
              s_backbuffer, FB_W * FB_H,
-             s_linebuf, FB_W, STRIP_H);
+             s_linebuf, FB_W, STRIP_H * VSCALE);
 
     // Clear the whole 240x320 panel (leftovers from previous firmware)
-    memset(s_linebuf, 0, FB_W * STRIP_H * sizeof(unsigned short));
+    memset(s_linebuf, 0, FB_W * STRIP_H * VSCALE * sizeof(unsigned short));
     for (int y = 0; y < BSP_LCD_H; y += STRIP_H) {
         int h = (y + STRIP_H > BSP_LCD_H) ? BSP_LCD_H - y : STRIP_H;
         bsp_display_draw_bitmap(0, y, BSP_LCD_W, h, s_linebuf);
@@ -187,19 +189,25 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
 
     const byte *src = (const byte *)s_backbuffer;
 
-    // Convert and blit in strips of STRIP_H rows (no rotation)
+    // Convert and blit in strips of STRIP_H game rows, scaled VSCALE x vertically.
     for (int y = 0; y < FB_H; y += STRIP_H) {
         int sh = (y + STRIP_H > FB_H) ? FB_H - y : STRIP_H;
-        int npix = FB_W * sh;
         const byte *row_src = src + y * FB_W;
 
-        for (int i = 0; i < npix; i++) {
-            s_linebuf[i] = s_palette[row_src[i]];
+        // Expand each game row into VSCALE identical display rows.
+        for (int r = 0; r < sh; r++) {
+            const byte *sr = row_src + r * FB_W;
+            uint16_t *dst = s_linebuf + (r * VSCALE) * FB_W;
+            for (int x = 0; x < FB_W; x++) {
+                uint16_t c = s_palette[sr[x]];
+                for (int v = 0; v < VSCALE; v++)
+                    dst[v * FB_W + x] = c;
+            }
         }
 
         bsp_display_draw_bitmap(
-            DISP_X_OFF, DISP_Y_OFF + y,
-            FB_W, sh,
+            DISP_X_OFF, y * VSCALE,
+            FB_W, sh * VSCALE,
             s_linebuf
         );
     }
@@ -282,16 +290,16 @@ void I_Error(const char *error, ...)
 
     ESP_LOGE("DOOM", "I_Error: %s", msg);
 
-    // Draw red error screen (strip-based, no rotation)
+    // Draw red error screen (strip-based, VSCALE vertical, fullscreen)
     if (s_linebuf) {
-        for (int i = 0; i < FB_W * STRIP_H; i++) {
+        for (int i = 0; i < FB_W * STRIP_H * VSCALE; i++) {
             s_linebuf[i] = bswap16(0xF800);
         }
         for (int y = 0; y < FB_H; y += STRIP_H) {
             int sh = (y + STRIP_H > FB_H) ? FB_H - y : STRIP_H;
             bsp_display_draw_bitmap(
-                DISP_X_OFF, DISP_Y_OFF + y,
-                FB_W, sh,
+                DISP_X_OFF, y * VSCALE,
+                FB_W, sh * VSCALE,
                 s_linebuf
             );
         }
