@@ -101,8 +101,9 @@ void I_CreateBackBuffer_e32(void)
 {
     // Engine framebuffer: 240x160 bytes of palette indices
     s_backbuffer = malloc(FB_W * FB_H);
-    // Rotated strip buffer: ROT_H * STRIP_H shorts (4.7KB per strip)
-    s_linebuf = malloc(ROT_H * STRIP_H * sizeof(unsigned short));
+    // Rotated strip buffer: STRIP_H * ROT_H shorts (4.7KB per strip)
+    // Layout: ROT_H rows of STRIP_H columns (stride = STRIP_H)
+    s_linebuf = malloc(STRIP_H * ROT_H * sizeof(unsigned short));
 
     if (!s_backbuffer || !s_linebuf) {
         ESP_LOGE(TAG, "Framebuffer alloc failed! backbuffer=%p linebuf=%p",
@@ -112,12 +113,12 @@ void I_CreateBackBuffer_e32(void)
 
     memset(s_backbuffer, 0, FB_W * FB_H);
 
-    ESP_LOGI(TAG, "FB: %p (%d bytes 8bpp) + %p (rotbuf %dx%d shorts)",
+    ESP_LOGI(TAG, "FB: %p (%d bytes 8bpp) + %p (rotbuf %d rows x %d cols)",
              s_backbuffer, FB_W * FB_H,
              s_linebuf, ROT_H, STRIP_H);
 
     // Clear the whole 240x320 panel (leftovers from previous firmware)
-    memset(s_linebuf, 0, ROT_H * STRIP_H * sizeof(unsigned short));
+    memset(s_linebuf, 0, STRIP_H * ROT_H * sizeof(unsigned short));
     for (int y = 0; y < BSP_LCD_H; y += STRIP_H) {
         int h = (y + STRIP_H > BSP_LCD_H) ? BSP_LCD_H - y : STRIP_H;
         bsp_display_draw_bitmap(0, y, BSP_LCD_W, h, s_linebuf);
@@ -199,10 +200,10 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
         // For each source column, write STRIP_H pixels into the rotated strip.
         // Outer loop iterates columns so dst writes are sequential in memory.
         for (int sx = 0; sx < FB_W; sx++) {
-            int dr = FB_W - 1 - sx;          // dest row in rotated strip
-            for (int dy = 0; dy < sh; dy++) { // dy = offset within strip
-                int dc = y + dy;              // dest column = source row
-                s_linebuf[dr * ROT_H + dc] = s_palette[src[(y + dy) * FB_W + sx]];
+            int dr = FB_W - 1 - sx;          // dest row in rotated strip [0..ROT_H)
+            for (int dy = 0; dy < sh; dy++) { // dy = dest column offset [0..STRIP_H)
+                int dc = y + dy;
+                s_linebuf[dr * STRIP_H + dc] = s_palette[src[(y + dy) * FB_W + sx]];
             }
         }
 
@@ -276,7 +277,7 @@ void I_Error(const char *error, ...)
 
     // Draw red error screen (rotated, using line buffer)
     if (s_linebuf) {
-        for (int i = 0; i < ROT_H * STRIP_H; i++) {
+        for (int i = 0; i < STRIP_H * ROT_H; i++) {
             s_linebuf[i] = bswap16(0xF800);
         }
         for (int y = 0; y < FB_H; y += STRIP_H) {
