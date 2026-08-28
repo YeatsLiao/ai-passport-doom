@@ -50,11 +50,10 @@ clock_t __wrap_clock(void)
 /* ---- Framebuffers ---- */
 // The engine renders 240x160 8-BIT palette indices (SCREENWIDTH=120 in
 // doomdef.h is measured in shorts; byte pitch is 240). s_backbuffer holds
-// those indices. To save RAM (ESP32-C3 has ~300KB total, engine eats ~115KB)
-// we do NOT allocate a full 75KB RGB565 staging buffer. Instead we convert
-// 10 rows at a time into a tiny line buffer and blit strip-by-strip.
-static unsigned short *s_backbuffer;   // 240*160 bytes (engine writes here)
-static unsigned short *s_linebuf;      // 240*STRIP_H shorts (temp staging)
+// those indices. We rotate 90° CW for landscape display and convert in
+// strips to save RAM (ESP32-C3 has ~300KB total, engine eats ~115KB).
+static unsigned short *s_backbuffer;   // FB_W * FB_H bytes (engine writes here)
+static unsigned short *s_linebuf;      // ROT_W * STRIP_H shorts (rotated strip)
 
 /* ---- Palette ---- */
 // Store palette as RGB565 shorts (matching ST7789 native format)
@@ -64,14 +63,16 @@ static unsigned short s_palette[256];
 static int s_last_btn = -1;   // -1 = no button
 
 /* ---- Display geometry ----
- * Doom renders at 240x160 (8bpp), screen is 240x320.
- * Full width, vertically centered: y_offset=80.
+ * Doom source: 240x160 (8bpp). Rotated 90° CW for landscape on 240x320 panel.
+ * Result on screen: 160 wide x 240 tall, centered at (40, 40).
  */
-#define DOOM_FB_W      240
-#define DOOM_FB_H      160
-#define DOOM_X_OFFSET  ((BSP_LCD_W - DOOM_FB_W) / 2)
-#define DOOM_Y_OFFSET  ((BSP_LCD_H - DOOM_FB_H) / 2)
-#define DOOM_STRIP_H   10   // rows per blit (4.7KB line buffer)
+#define FB_W           240    // engine framebuffer width (bytes)
+#define FB_H           160    // engine framebuffer height
+#define ROT_W          160    // display width after 90° CW rotation (= FB_H)
+#define ROT_H          240    // display height after 90° CW rotation (= FB_W)
+#define DISP_X_OFF     ((BSP_LCD_W - ROT_W) / 2)  // 40
+#define DISP_Y_OFF     ((BSP_LCD_H - ROT_H) / 2)  // 40
+#define STRIP_H        10     // source rows per blit strip
 
 /* ---- Byte swap for SPI (LE CPU -> BE display) ---- */
 static inline unsigned short bswap16(unsigned short v)
@@ -99,9 +100,9 @@ void I_InitScreen_e32(void)
 void I_CreateBackBuffer_e32(void)
 {
     // Engine framebuffer: 240x160 bytes of palette indices
-    s_backbuffer = malloc(DOOM_FB_W * DOOM_FB_H);
-    // Small line buffer: convert STRIP_H rows at a time (saves ~70KB RAM)
-    s_linebuf = malloc(DOOM_FB_W * DOOM_STRIP_H * sizeof(unsigned short));
+    s_backbuffer = malloc(FB_W * FB_H);
+    // Rotated strip buffer: ROT_W * STRIP_H shorts (3.1KB per strip)
+    s_linebuf = malloc(ROT_W * STRIP_H * sizeof(unsigned short));
 
     if (!s_backbuffer || !s_linebuf) {
         ESP_LOGE(TAG, "Framebuffer alloc failed! backbuffer=%p linebuf=%p",
@@ -109,16 +110,16 @@ void I_CreateBackBuffer_e32(void)
         abort();
     }
 
-    memset(s_backbuffer, 0, DOOM_FB_W * DOOM_FB_H);
+    memset(s_backbuffer, 0, FB_W * FB_H);
 
-    ESP_LOGI(TAG, "Framebuffer: %p (%d bytes 8bpp) + %p (linebuf %d shorts)",
-             s_backbuffer, DOOM_FB_W * DOOM_FB_H,
-             s_linebuf, DOOM_FB_W * DOOM_STRIP_H);
+    ESP_LOGI(TAG, "FB: %p (%d bytes 8bpp) + %p (rotbuf %dx%d shorts)",
+             s_backbuffer, FB_W * FB_H,
+             s_linebuf, ROT_W, STRIP_H);
 
     // Clear the whole 240x320 panel (leftovers from previous firmware)
-    memset(s_linebuf, 0, DOOM_FB_W * DOOM_STRIP_H * sizeof(unsigned short));
-    for (int y = 0; y < BSP_LCD_H; y += DOOM_STRIP_H) {
-        int h = (y + DOOM_STRIP_H > BSP_LCD_H) ? BSP_LCD_H - y : DOOM_STRIP_H;
+    memset(s_linebuf, 0, ROT_W * STRIP_H * sizeof(unsigned short));
+    for (int y = 0; y < BSP_LCD_H; y += STRIP_H) {
+        int h = (y + STRIP_H > BSP_LCD_H) ? BSP_LCD_H - y : STRIP_H;
         bsp_display_draw_bitmap(0, y, BSP_LCD_W, h, s_linebuf);
     }
 
@@ -127,12 +128,12 @@ void I_CreateBackBuffer_e32(void)
 
 int I_GetVideoWidth_e32(void)
 {
-    return DOOM_FB_W;     // 240 (bytes; engine counts 120 shorts)
+    return FB_W;     // 240 (bytes; engine counts 120 shorts)
 }
 
 int I_GetVideoHeight_e32(void)
 {
-    return DOOM_FB_H;     // 160
+    return FB_H;     // 160
 }
 
 unsigned short* I_GetBackBuffer(void)
@@ -172,9 +173,10 @@ void I_SetPallete_e32(const byte *palette)
 }
 
 /*
- * I_FinishUpdate_e32 - Convert the 240x160 8bpp index buffer to RGB565
- * and flush it to the ST7789 display. Uses a small line buffer to avoid
- * allocating a full 75KB staging buffer.
+ * I_FinishUpdate_e32 - Convert 240x160 8bpp to RGB565 with 90° CW rotation
+ * and blit to display in strips. Source (sx, sy) maps to screen position:
+ *   dx = sy + DISP_X_OFF,  dy = (FB_W - 1 - sx) + DISP_Y_OFF
+ * Each strip of STRIP_H source rows becomes a ROT_W x STRIP_H block.
  */
 void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
                         const unsigned int width, const unsigned int height)
@@ -189,21 +191,24 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
     }
 
     const byte *src = (const byte *)s_backbuffer;
-    const int base_y = DOOM_Y_OFFSET;
 
-    // Convert and blit in strips of DOOM_STRIP_H rows
-    for (int y = 0; y < DOOM_FB_H; y += DOOM_STRIP_H) {
-        int h = (y + DOOM_STRIP_H > DOOM_FB_H) ? DOOM_FB_H - y : DOOM_STRIP_H;
-        int npix = DOOM_FB_W * h;
-        const byte *row_src = src + y * DOOM_FB_W;
+    // Convert and blit in strips of STRIP_H source rows, rotated 90° CW
+    for (int y = 0; y < FB_H; y += STRIP_H) {
+        int sh = (y + STRIP_H > FB_H) ? FB_H - y : STRIP_H;
 
-        for (int i = 0; i < npix; i++) {
-            s_linebuf[i] = s_palette[row_src[i]];
+        // For each source column, write STRIP_H pixels into the rotated strip.
+        // Outer loop iterates columns so dst writes are sequential in memory.
+        for (int sx = 0; sx < FB_W; sx++) {
+            int dr = FB_W - 1 - sx;          // dest row in rotated strip
+            for (int dy = 0; dy < sh; dy++) { // dy = offset within strip
+                int dc = y + dy;              // dest column = source row
+                s_linebuf[dr * ROT_W + dc] = s_palette[src[(y + dy) * FB_W + sx]];
+            }
         }
 
         bsp_display_draw_bitmap(
-            DOOM_X_OFFSET, base_y + y,
-            DOOM_FB_W, h,
+            DISP_X_OFF, DISP_Y_OFF + y,
+            ROT_W, sh,
             s_linebuf
         );
     }
@@ -212,13 +217,10 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
 /*
  * I_ProcessKeyEvents - Poll ADC buttons and post Doom events.
  *
- * Button mapping (normal mode):
- *   UP   -> KEYD_UP    (forward)
- *   DOWN -> KEYD_DOWN  (backward)
- *   OK   -> KEYD_A     (fire/use)
- *
- * TODO Phase 4: Long-press OK (500ms) toggles "turn mode"
- * where UP=KEYD_LEFT, DOWN=KEYD_RIGHT.
+ * Button mapping (3-button landscape):
+ *   UP   -> KEYD_UP     (forward)
+ *   DOWN -> KEYD_RIGHT  (turn right)
+ *   OK   -> KEYD_A      (fire / use)
  */
 void I_ProcessKeyEvents(void)
 {
@@ -232,9 +234,9 @@ void I_ProcessKeyEvents(void)
         if (s_last_btn >= 0) {
             ev.type = ev_keyup;
             switch (s_last_btn) {
-                case BSP_BTN_UP:   ev.data1 = KEYD_UP;   break;
-                case BSP_BTN_DOWN: ev.data1 = KEYD_DOWN; break;
-                case BSP_BTN_OK:   ev.data1 = KEYD_A;    break;
+                case BSP_BTN_UP:   ev.data1 = KEYD_UP;    break;
+                case BSP_BTN_DOWN: ev.data1 = KEYD_RIGHT; break;
+                case BSP_BTN_OK:   ev.data1 = KEYD_A;     break;
                 default: return;
             }
             D_PostEvent(&ev);
@@ -244,9 +246,9 @@ void I_ProcessKeyEvents(void)
         if (cur >= 0) {
             ev.type = ev_keydown;
             switch (cur) {
-                case BSP_BTN_UP:   ev.data1 = KEYD_UP;   break;
-                case BSP_BTN_DOWN: ev.data1 = KEYD_DOWN; break;
-                case BSP_BTN_OK:   ev.data1 = KEYD_A;    break;
+                case BSP_BTN_UP:   ev.data1 = KEYD_UP;    break;
+                case BSP_BTN_DOWN: ev.data1 = KEYD_RIGHT; break;
+                case BSP_BTN_OK:   ev.data1 = KEYD_A;     break;
                 default: return;
             }
             D_PostEvent(&ev);
@@ -272,16 +274,16 @@ void I_Error(const char *error, ...)
 
     ESP_LOGE("DOOM", "I_Error: %s", msg);
 
-    // Draw red error screen (use line buffer if available, else just log)
+    // Draw red error screen (rotated, using line buffer)
     if (s_linebuf) {
-        for (int i = 0; i < DOOM_FB_W * DOOM_STRIP_H; i++) {
+        for (int i = 0; i < ROT_W * STRIP_H; i++) {
             s_linebuf[i] = bswap16(0xF800);
         }
-        for (int y = 0; y < DOOM_FB_H; y += DOOM_STRIP_H) {
-            int h = (y + DOOM_STRIP_H > DOOM_FB_H) ? DOOM_FB_H - y : DOOM_STRIP_H;
+        for (int y = 0; y < FB_H; y += STRIP_H) {
+            int sh = (y + STRIP_H > FB_H) ? FB_H - y : STRIP_H;
             bsp_display_draw_bitmap(
-                DOOM_X_OFFSET, DOOM_Y_OFFSET + y,
-                DOOM_FB_W, h,
+                DISP_X_OFF, DISP_Y_OFF + y,
+                ROT_W, sh,
                 s_linebuf
             );
         }
