@@ -208,45 +208,79 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
 /*
  * I_ProcessKeyEvents - Poll ADC buttons and post Doom events.
  *
- * Button mapping (3-button):
- *   UP   -> KEYD_UP     (forward)
- *   DOWN -> KEYD_RIGHT  (turn right)
- *   OK   -> KEYD_B      (fire)
- *   Note: KEYD_A = use/open door, currently unmapped (need 4th button)
+ * Long-press flip scheme: each button has 2 actions, no mode toggle needed.
+ * Short press = primary key (immediate). Hold > LONG_FLIP_US = secondary key.
+ * Release resets. This gives 6 actions from 3 buttons naturally.
+ *
+ *   UP   short: KEYD_UP     (forward)     long: KEYD_DOWN  (backward)
+ *   DOWN short: KEYD_RIGHT  (turn right)  long: KEYD_LEFT  (turn left)
+ *   OK   short: KEYD_B      (fire)        long: KEYD_A     (use / door)
+ *
+ * Note: KEYD_A doubles as key_speed (run) in GBADoom g_game.c,
+ *       so long-press OK also makes you run while held.
  */
+#define LONG_FLIP_US  500000  // 500 ms
+
 void I_ProcessKeyEvents(void)
 {
     bsp_btn_t btn;
     int cur = bsp_button_read(&btn);
 
+    static int64_t press_start  = 0;
+    static bool    is_secondary = false;
+    static int     active_key   = -1;   // currently held doom key
+
+    // --- detect button change ---
     if (cur != s_last_btn) {
-        event_t ev;
-
-        // Release previous button
-        if (s_last_btn >= 0) {
-            ev.type = ev_keyup;
-            switch (s_last_btn) {
-                case BSP_BTN_UP:   ev.data1 = KEYD_UP;    break;
-                case BSP_BTN_DOWN: ev.data1 = KEYD_RIGHT; break;
-                case BSP_BTN_OK:   ev.data1 = KEYD_B;     break;
-                default: return;
-            }
+        // Release previous key
+        if (active_key >= 0) {
+            event_t ev = { .type = ev_keyup, .data1 = active_key };
             D_PostEvent(&ev);
+            active_key = -1;
         }
+        is_secondary = false;
 
-        // Press new button
         if (cur >= 0) {
-            ev.type = ev_keydown;
+            // New button pressed: send primary key immediately
+            press_start = esp_timer_get_time();
+            int key;
             switch (cur) {
-                case BSP_BTN_UP:   ev.data1 = KEYD_UP;    break;
-                case BSP_BTN_DOWN: ev.data1 = KEYD_RIGHT; break;
-                case BSP_BTN_OK:   ev.data1 = KEYD_B;     break;
+                case BSP_BTN_UP:   key = KEYD_UP;    break;
+                case BSP_BTN_DOWN: key = KEYD_RIGHT; break;
+                case BSP_BTN_OK:   key = KEYD_B;     break;
                 default: return;
             }
+            event_t ev = { .type = ev_keydown, .data1 = key };
             D_PostEvent(&ev);
+            active_key = key;
+        } else {
+            press_start = 0;
         }
-
         s_last_btn = cur;
+        return;
+    }
+
+    // --- same button still held: check for long-press flip ---
+    if (cur >= 0 && !is_secondary && press_start > 0) {
+        if (esp_timer_get_time() - press_start > LONG_FLIP_US) {
+            is_secondary = true;
+            // Release primary key
+            if (active_key >= 0) {
+                event_t ev = { .type = ev_keyup, .data1 = active_key };
+                D_PostEvent(&ev);
+            }
+            // Send secondary key
+            int key;
+            switch (cur) {
+                case BSP_BTN_UP:   key = KEYD_DOWN; break;
+                case BSP_BTN_DOWN: key = KEYD_LEFT; break;
+                case BSP_BTN_OK:   key = KEYD_A;    break;
+                default: return;
+            }
+            event_t ev = { .type = ev_keydown, .data1 = key };
+            D_PostEvent(&ev);
+            active_key = key;
+        }
     }
 }
 

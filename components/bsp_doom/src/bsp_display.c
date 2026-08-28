@@ -65,7 +65,7 @@ esp_err_t bsp_display_init(void) {
     spi_bus_config_t bus = {
         .mosi_io_num = BSP_LCD_MOSI, .sclk_io_num = BSP_LCD_SCLK,
         .miso_io_num = -1, .quadwp_io_num = -1, .quadhd_io_num = -1,
-        .max_transfer_sz = BSP_LCD_W * 80 * 2,
+        .max_transfer_sz = BSP_LCD_W * 20 * 2,  // 9.6KB: enough for 20-row strips
     };
     esp_err_t e = spi_bus_initialize(BSP_LCD_SPI_HOST, &bus, SPI_DMA_CH_AUTO);
     if (e != ESP_OK) return e;

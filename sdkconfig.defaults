@@ -21,11 +21,21 @@ CONFIG_ESP_WIFI_ENABLED=n
 
 # --- System ---
 CONFIG_FREERTOS_HZ=1000
-# Larger main task stack for Doom engine
-CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+# Smaller main task stack for Doom (engine loop is shallow)
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
 # --- Compiler optimization for size ---
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 
 # --- Heap ---
 CONFIG_HEAP_POISONING_DISABLED=y
+
+# --- LWIP: keep enabled (required by esp_http_server) but minimize RAM ---
+# Disable DHCP server (saves ~8KB)
+CONFIG_LWIP_DHCPS=n
+# Disable IPv6 (saves ~5KB)
+CONFIG_LWIP_IPV6=n
+# Reduce max sockets (default 16 -> 4, saves ~6KB)
+CONFIG_LWIP_MAX_SOCKETS=4
+# Disable mDNS
+CONFIG_MDNS_ENABLED=n
