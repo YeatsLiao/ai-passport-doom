@@ -53,7 +53,7 @@ clock_t __wrap_clock(void)
 // those indices. We rotate 90° CW for landscape display and convert in
 // strips to save RAM (ESP32-C3 has ~300KB total, engine eats ~115KB).
 static unsigned short *s_backbuffer;   // FB_W * FB_H bytes (engine writes here)
-static unsigned short *s_linebuf;      // ROT_W * STRIP_H shorts (rotated strip)
+static unsigned short *s_linebuf;      // ROT_H * STRIP_H shorts (rotated strip)
 
 /* ---- Palette ---- */
 // Store palette as RGB565 shorts (matching ST7789 native format)
@@ -101,8 +101,8 @@ void I_CreateBackBuffer_e32(void)
 {
     // Engine framebuffer: 240x160 bytes of palette indices
     s_backbuffer = malloc(FB_W * FB_H);
-    // Rotated strip buffer: ROT_W * STRIP_H shorts (3.1KB per strip)
-    s_linebuf = malloc(ROT_W * STRIP_H * sizeof(unsigned short));
+    // Rotated strip buffer: ROT_H * STRIP_H shorts (4.7KB per strip)
+    s_linebuf = malloc(ROT_H * STRIP_H * sizeof(unsigned short));
 
     if (!s_backbuffer || !s_linebuf) {
         ESP_LOGE(TAG, "Framebuffer alloc failed! backbuffer=%p linebuf=%p",
@@ -114,10 +114,10 @@ void I_CreateBackBuffer_e32(void)
 
     ESP_LOGI(TAG, "FB: %p (%d bytes 8bpp) + %p (rotbuf %dx%d shorts)",
              s_backbuffer, FB_W * FB_H,
-             s_linebuf, ROT_W, STRIP_H);
+             s_linebuf, ROT_H, STRIP_H);
 
     // Clear the whole 240x320 panel (leftovers from previous firmware)
-    memset(s_linebuf, 0, ROT_W * STRIP_H * sizeof(unsigned short));
+    memset(s_linebuf, 0, ROT_H * STRIP_H * sizeof(unsigned short));
     for (int y = 0; y < BSP_LCD_H; y += STRIP_H) {
         int h = (y + STRIP_H > BSP_LCD_H) ? BSP_LCD_H - y : STRIP_H;
         bsp_display_draw_bitmap(0, y, BSP_LCD_W, h, s_linebuf);
@@ -202,13 +202,13 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
             int dr = FB_W - 1 - sx;          // dest row in rotated strip
             for (int dy = 0; dy < sh; dy++) { // dy = offset within strip
                 int dc = y + dy;              // dest column = source row
-                s_linebuf[dr * ROT_W + dc] = s_palette[src[(y + dy) * FB_W + sx]];
+                s_linebuf[dr * ROT_H + dc] = s_palette[src[(y + dy) * FB_W + sx]];
             }
         }
 
         bsp_display_draw_bitmap(
             DISP_X_OFF, DISP_Y_OFF + y,
-            ROT_W, sh,
+            ROT_H, sh,
             s_linebuf
         );
     }
@@ -276,14 +276,14 @@ void I_Error(const char *error, ...)
 
     // Draw red error screen (rotated, using line buffer)
     if (s_linebuf) {
-        for (int i = 0; i < ROT_W * STRIP_H; i++) {
+        for (int i = 0; i < ROT_H * STRIP_H; i++) {
             s_linebuf[i] = bswap16(0xF800);
         }
         for (int y = 0; y < FB_H; y += STRIP_H) {
             int sh = (y + STRIP_H > FB_H) ? FB_H - y : STRIP_H;
             bsp_display_draw_bitmap(
                 DISP_X_OFF, DISP_Y_OFF + y,
-                ROT_W, sh,
+                ROT_H, sh,
                 s_linebuf
             );
         }
