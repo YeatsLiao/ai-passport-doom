@@ -26,6 +26,8 @@ typedef struct {
 
 static const st_init_cmd_t ST7789P3_CMDS[] = {
     {0xB2, {0x05, 0x05, 0x00, 0x33, 0x33}, 5, 0},
+    {0xB6, {0x00, 0x82}, 2, 0},            // Display Function Control: 标准扫描模式 + NL修复
+    {0xC5, {0x22}, 1, 0},                  // VCOM Control
     {0xB7, {0x35}, 1, 0},
     {0xBB, {0x21}, 1, 0},
     {0xC0, {0x2C}, 1, 0},
