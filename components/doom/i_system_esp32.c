@@ -72,6 +72,7 @@ static int s_last_btn = -1;   // -1 = no button
 #define DISP_X_OFF     0      // full width
 #define VSCALE         2      // vertical scale: 160 game rows -> 320 display
 #define STRIP_H        8      // source (game) rows converted per blit strip
+#define DISP_BOTTOM_BLACK 16  // display rows masked by black bar at bottom
 
 /* ---- Byte swap for SPI (LE CPU -> BE display) ---- */
 static inline unsigned short bswap16(unsigned short v)
@@ -100,8 +101,11 @@ void I_CreateBackBuffer_e32(void)
 {
     // Engine framebuffer: 240x160 bytes of palette indices
     s_backbuffer = malloc(FB_W * FB_H);
-    // Strip staging buffer: FB_W * STRIP_H * VSCALE shorts (2x vertical)
-    s_linebuf = malloc(FB_W * STRIP_H * VSCALE * sizeof(unsigned short));
+    // Line buffer: sized to cover both strip rendering (STRIP_H*VSCALE rows)
+    // and the bottom black bar (DISP_BOTTOM_BLACK rows), whichever is larger.
+    const int linebuf_rows = STRIP_H * VSCALE > DISP_BOTTOM_BLACK
+                             ? STRIP_H * VSCALE : DISP_BOTTOM_BLACK;
+    s_linebuf = malloc(FB_W * linebuf_rows * sizeof(unsigned short));
 
     if (!s_backbuffer || !s_linebuf) {
         ESP_LOGE(TAG, "Framebuffer alloc failed! backbuffer=%p linebuf=%p",
@@ -111,12 +115,12 @@ void I_CreateBackBuffer_e32(void)
 
     memset(s_backbuffer, 0, FB_W * FB_H);
 
-    ESP_LOGI(TAG, "FB: %p (%d bytes 8bpp) + %p (linebuf %dx%d shorts)",
+    ESP_LOGI(TAG, "FB: %p (%d bytes 8bpp) + %p (linebuf %dx%d shorts, %d bytes)",
              s_backbuffer, FB_W * FB_H,
-             s_linebuf, FB_W, STRIP_H * VSCALE);
+             s_linebuf, FB_W, linebuf_rows, FB_W * linebuf_rows * 2);
 
     // Clear the whole 240x320 panel (leftovers from previous firmware)
-    memset(s_linebuf, 0, FB_W * STRIP_H * VSCALE * sizeof(unsigned short));
+    memset(s_linebuf, 0, FB_W * linebuf_rows * sizeof(unsigned short));
     for (int y = 0; y < BSP_LCD_H; y += STRIP_H) {
         int h = (y + STRIP_H > BSP_LCD_H) ? BSP_LCD_H - y : STRIP_H;
         bsp_display_draw_bitmap(0, y, BSP_LCD_W, h, s_linebuf);
@@ -190,6 +194,8 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
     const byte *src = (const byte *)s_backbuffer;
 
     // Convert and blit in strips of STRIP_H game rows, scaled VSCALE x vertically.
+    // Render all FB_H (160) game rows to fill the full 320 display rows,
+    // then overlay a black bar at the bottom to mask the panel's duplicated band.
     for (int y = 0; y < FB_H; y += STRIP_H) {
         int sh = (y + STRIP_H > FB_H) ? FB_H - y : STRIP_H;
         const byte *row_src = src + y * FB_W;
@@ -211,6 +217,15 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
             s_linebuf
         );
     }
+
+    // Black bar: overlay the bottom DISP_BOTTOM_BLACK display rows with black
+    // to hide the panel's duplicated content (scroll-offset wraparound).
+    memset(s_linebuf, 0, FB_W * DISP_BOTTOM_BLACK * sizeof(unsigned short));
+    bsp_display_draw_bitmap(
+        DISP_X_OFF, BSP_LCD_H - DISP_BOTTOM_BLACK,
+        FB_W, DISP_BOTTOM_BLACK,
+        s_linebuf
+    );
 }
 
 /*

@@ -63,10 +63,14 @@
 - 屏幕角落显示 `↰↱` / `↑↓` 图标提示当前模式
 - 开门/使用 = 引擎自动判断（走到门前按 OK）
 
-### 3. WAD 文件
+### 3. WAD 文件（三级管线）
 
-- 使用 DOOM1.WAD（shareware 版，~4MB，合法免费分发）
-- 存入 Flash 专用分区
+- 原始 `DOOM1.WAD`（shareware ~4.19MB）**不能直接烧**
+- 必须经三级处理：
+  1. `merge_pwad.py` 合并 `gbadoom.wad` 补丁 + 大写化 PNAMES → `DOOM1_GBA.WAD`
+  2. `GbaWadUtil.exe` 转换 seg_t 格式（12→28 字节）→ `DOOM1_PROCESSED.WAD`
+- **最终烧录 `DOOM1_PROCESSED.WAD`**（~3.90MB）
+- 存入 Flash 专用分区（offset 0x310000）
 
 ---
 
@@ -146,30 +150,32 @@ void I_Quit_e32();                          // 退出清理
 - [x] 选型分析（GBADoom 优于 Doomgeneric/MG21DOOM 等）
 - [x] 获取 DOOM1.WAD（shareware ~4.19MB）
 
-### Phase 1：ESP-IDF 工程骨架 ✅ (待编译验证)
+### Phase 1：ESP-IDF 工程骨架 ✅
 - [x] 创建 ESP-IDF 项目结构（CMakeLists.txt, main/, components/）
 - [x] bsp_doom 组件（从 ai-passport 精简的显示+按键 BSP）
 - [x] doom 组件（GBADoom 源码 + ESP32 平台层 + WAD Flash 加载）
-- [x] partitions.csv（factory 3MB + wad 4.06MB）
+- [x] partitions.csv（factory 3MB + wad ~4.94MB）
 - [x] sdkconfig.defaults（关闭 BLE/WiFi 节省 RAM）
-- [ ] `idf.py build` 编译验证（需要激活 ESP-IDF 5.5.3 环境）
+- [x] `idf.py build` 编译验证（7 轮修复，详见第 3 篇）
 
-### Phase 2：平台层适配（大部分已在 Phase 1 完成）
+### Phase 2：平台层适配 ✅
 - [x] `i_system_esp32.c`：12 个 e32 接口全部实现
 - [x] `gba_functions.h`：非 GBA 分支已用 memcpy/memset，无需改
 - [x] `fixeddiv.s`：非 GBA 的 FixedDiv 用 int_64_t C 实现，无需汇编
-- [ ] 编译调错（预计有头文件/类型/链接问题）
-- [ ] 目标：编译通过，能进入 Doom 主循环
+- [x] 编译调错（7 轮修复，详见第 3 篇）
+- [x] 目标：编译通过，能进入 Doom 主循环
 
-### Phase 3：WAD 加载与显示
+### Phase 3：WAD 加载与显示 ✅
 - [x] WAD Flash 分区 + mmap 加载（esp32_wad.c 已写）
 - [x] 调色板 RGB→RGB565 转换 + byte swap（i_system_esp32.c 已实现）
-- [ ] 将 DOOM1.WAD 烧入 Flash
-- [ ] 验证标题画面显示正确
+- [x] WAD 三级管线（DOOM1.WAD → merge → GbaWadUtil → DOOM1_PROCESSED.WAD）
+- [x] 2x 纵向缩放全屏显示 + 底部黑色遮挡条
 
-### Phase 4：游戏可玩性
-- [x] 基础三键输入（i_system_esp32.c 已实现 UP/DOWN/OK 映射）
-- [ ] 长按 OK 500ms 切换转向模式
+### Phase 4：游戏可玩性（进行中）
+- [x] 基础三键输入（UP/DOWN/OK 映射）
+- [x] Z_Malloc 崩溃修复（sdkconfig 精简 + LWIP 裁剪）
+- [x] 菜单无法进入修复（引擎层解耦 key_use）
+- [x] 底部重复修复（黑色遮挡条，代码精简至最小改动）
 - [ ] 性能调优（跳帧、降低内部分辨率、裁剪特效）
 - [ ] 目标：E1M1 可玩，帧率 ≥5 FPS
 
