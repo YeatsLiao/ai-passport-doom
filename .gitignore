@@ -3,10 +3,6 @@ build/
 sdkconfig
 sdkconfig.old
 
-# WAD binary (large, not for GitHub)
-DOOM1.WAD
-*.wad
-
 # Process notes (local only)
 过程文章/
 
