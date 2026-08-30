@@ -46,6 +46,31 @@
 
 **解决**：接受现状——WiFi 编译进固件但不调用 `esp_wifi_init()`，运行时不占额外内存。通过 `sdkconfig.defaults` + `SDKCONFIG_DEFAULTS` 变量确保配置被加载。
 
+### 5. 底部黑条叠加 "AI-PASSPORT-DOOM" 红色文字
+
+**需求**：在底部 16 行黑色遮挡条区域显示红色 "AI-PASSPORT-DOOM" 字样，不频闪。
+
+**尝试过程**：
+1. 使用 5x7 点阵字体表 + MSB-first 位读取 → 乱码
+2. 改为 LSB-first 位读取 → 仍然乱码
+3. 尝试 2x 放大渲染 → 更乱
+4. 换字体数据源 → 仍然乱码（字体存储格式与渲染逻辑不匹配）
+5. **最终方案**：完全绕过字体表，硬编码每个字符的像素位置直接写入 linebuf → 正常显示
+
+**根因**：所用 5x7 字体数据的存储格式（列主序/行主序/位序）与渲染逻辑不匹配，且难以快速定位具体格式。硬编码方案彻底规避了字体格式问题。
+
+**关键修改文件**：`i_system_esp32.c`（`draw_text_on_blackbar` 函数）
+
+### 6. 演示模式无法通过按键退出
+
+**现象**：游戏启动后如果不操作，自动进入演示模式。演示回放期间按任意键均无响应，必须等演示自然结束才能操作菜单。
+
+**根因**：`G_Responder()` 中 `demoplayback` 期间（非标题画面 `GS_DEMOSCREEN`）直接 `return false`，所有按键事件被忽略，无法中断演示回放。
+
+**解决**：在 `G_Responder()` 的 demo 处理分支中，增加 `demoplayback` 状态的按键处理——任意 `ev_keydown` 设置 `demoplayback = false` 并调用 `M_StartControlPanel()` 打开主菜单。
+
+**关键修改文件**：`GBADoom/source/g_game.c`（`G_Responder` 函数）
+
 ---
 
 ## 待解决
