@@ -2,6 +2,14 @@
 
 在 AI-Passport 电子胸牌上运行 DOOM。
 
+![cover-1](docs/cover-1.jpg)
+
+![cover-2](docs/cover-2.jpg)
+
+![cover-3](docs/cover-3.jpg)
+
+![cover-4](docs/cover-4.jpg)
+
 ![硬件](https://img.shields.io/badge/MCU-ESP32--C3-blue) ![屏幕](https://img.shields.io/badge/Screen-ST7789P3%20240x320-green) ![帧率](https://img.shields.io/badge/FPS-5~15-yellow)
 
 ## 硬件
@@ -92,7 +100,7 @@ idf.py -p COM4 monitor
 ## 显示
 
 - 引擎渲染 240×160（8bpp），纵向 2x 拉伸到 240×320
-- 底部 16 行黑色遮挡条（遮住面板重复行）
+- 底部 16 行黑色遮挡条（遮住面板重复行），叠加红色 "AI-PASSPORT-DOOM" 字样
 - 已知限制：左侧轻微鬼影（ST7789P3 面板硬件特性）
 
 ## 文档

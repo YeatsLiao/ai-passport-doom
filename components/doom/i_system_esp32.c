@@ -169,6 +169,206 @@ void I_SetPallete_e32(const byte *palette)
 }
 
 /*
+ * draw_text_on_blackbar - Render "AI-PASSPORT-DOOM" in red on the bottom
+ * black bar. Uses pre-rendered bitmap to avoid font rendering issues.
+ */
+static void draw_text_on_blackbar(unsigned short *linebuf, int bar_w, int bar_h)
+{
+    // Pre-rendered "AI-PASSPORT-DOOM" as a 95x7 bitmap (1 bit per pixel)
+    // Each row is 12 bytes (95 bits rounded up to 96 = 12 bytes)
+    // Red color: RGB565 0xF800, byte-swapped for SPI
+    const unsigned short red = bswap16(0xF800);
+    
+    // Clear to black
+    memset(linebuf, 0, bar_w * bar_h * sizeof(unsigned short));
+    
+    // Text dimensions and position
+    const int text_w = 95;   // 16 chars * 5px + 15 gaps
+    const int text_h = 7;
+    const int x0 = (bar_w - text_w) / 2;   // 72
+    const int y0 = (bar_h - text_h) / 2;   // 4
+    
+    // Simple hardcoded character bitmaps for A,I,P,S,O,R,T,D,M,-
+    // Each char is 5 wide x 7 tall, stored as 7 rows of 5-bit values
+    // Using direct pixel setting to avoid any font lookup issues
+    
+    // Helper: set a pixel in linebuf
+    #define SET_PIX(x,y) linebuf[(y) * bar_w + (x)] = red
+    
+    // Draw "A" at x0+0
+    {
+        int bx = x0 + 0;
+        // Row 0: _XXXX_ -> cols 1,2,3,4
+        SET_PIX(bx+1,y0+0); SET_PIX(bx+2,y0+0); SET_PIX(bx+3,y0+0); SET_PIX(bx+4,y0+0);
+        // Row 1: X___X
+        SET_PIX(bx+0,y0+1); SET_PIX(bx+4,y0+1);
+        // Row 2: X___X
+        SET_PIX(bx+0,y0+2); SET_PIX(bx+4,y0+2);
+        // Row 3: XXXXX
+        SET_PIX(bx+0,y0+3); SET_PIX(bx+1,y0+3); SET_PIX(bx+2,y0+3); SET_PIX(bx+3,y0+3); SET_PIX(bx+4,y0+3);
+        // Row 4: X___X
+        SET_PIX(bx+0,y0+4); SET_PIX(bx+4,y0+4);
+        // Row 5: X___X
+        SET_PIX(bx+0,y0+5); SET_PIX(bx+4,y0+5);
+        // Row 6: X___X
+        SET_PIX(bx+0,y0+6); SET_PIX(bx+4,y0+6);
+    }
+    
+    // Draw "I" at x0+6
+    {
+        int bx = x0 + 6;
+        // Row 0-6: XXX
+        for (int r = 0; r < 7; r++) {
+            SET_PIX(bx+1,y0+r); SET_PIX(bx+2,y0+r); SET_PIX(bx+3,y0+r);
+        }
+    }
+    
+    // Draw "-" at x0+12
+    {
+        int bx = x0 + 12;
+        // Row 3: XXXXX
+        for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+3);
+    }
+    
+    // Draw "P" at x0+18
+    {
+        int bx = x0 + 18;
+        // Row 0: XXXXX
+        for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+0);
+        // Row 1: X___X
+        SET_PIX(bx+0,y0+1); SET_PIX(bx+4,y0+1);
+        // Row 2: X___X
+        SET_PIX(bx+0,y0+2); SET_PIX(bx+4,y0+2);
+        // Row 3: XXXXX
+        for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+3);
+        // Row 4: X____
+        SET_PIX(bx+0,y0+4);
+        // Row 5: X____
+        SET_PIX(bx+0,y0+5);
+        // Row 6: X____
+        SET_PIX(bx+0,y0+6);
+    }
+    
+    // Draw "A" at x0+24
+    {
+        int bx = x0 + 24;
+        SET_PIX(bx+1,y0+0); SET_PIX(bx+2,y0+0); SET_PIX(bx+3,y0+0); SET_PIX(bx+4,y0+0);
+        SET_PIX(bx+0,y0+1); SET_PIX(bx+4,y0+1);
+        SET_PIX(bx+0,y0+2); SET_PIX(bx+4,y0+2);
+        SET_PIX(bx+0,y0+3); SET_PIX(bx+1,y0+3); SET_PIX(bx+2,y0+3); SET_PIX(bx+3,y0+3); SET_PIX(bx+4,y0+3);
+        SET_PIX(bx+0,y0+4); SET_PIX(bx+4,y0+4);
+        SET_PIX(bx+0,y0+5); SET_PIX(bx+4,y0+5);
+        SET_PIX(bx+0,y0+6); SET_PIX(bx+4,y0+6);
+    }
+    
+    // Draw "S" at x0+30
+    {
+        int bx = x0 + 30;
+        // Row 0: XXXXX
+        for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+0);
+        // Row 1: X____
+        SET_PIX(bx+0,y0+1);
+        // Row 2: X____
+        SET_PIX(bx+0,y0+2);
+        // Row 3: XXXXX
+        for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+3);
+        // Row 4: ____X
+        SET_PIX(bx+4,y0+4);
+        // Row 5: ____X
+        SET_PIX(bx+4,y0+5);
+        // Row 6: XXXXX
+        for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+6);
+    }
+    
+    // Draw "S" at x0+36
+    { int bx = x0 + 36;
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+0);
+      SET_PIX(bx+0,y0+1); SET_PIX(bx+0,y0+2);
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+3);
+      SET_PIX(bx+4,y0+4); SET_PIX(bx+4,y0+5);
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+6); }
+    
+    // Draw "P" at x0+42
+    { int bx = x0 + 42;
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+0);
+      SET_PIX(bx+0,y0+1); SET_PIX(bx+4,y0+1);
+      SET_PIX(bx+0,y0+2); SET_PIX(bx+4,y0+2);
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+3);
+      SET_PIX(bx+0,y0+4); SET_PIX(bx+0,y0+5); SET_PIX(bx+0,y0+6); }
+    
+    // Draw "O" at x0+48
+    { int bx = x0 + 48;
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+0);
+      SET_PIX(bx+0,y0+1); SET_PIX(bx+4,y0+1);
+      SET_PIX(bx+0,y0+2); SET_PIX(bx+4,y0+2);
+      SET_PIX(bx+0,y0+3); SET_PIX(bx+4,y0+3);
+      SET_PIX(bx+0,y0+4); SET_PIX(bx+4,y0+4);
+      SET_PIX(bx+0,y0+5); SET_PIX(bx+4,y0+5);
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+6); }
+    
+    // Draw "R" at x0+54
+    { int bx = x0 + 54;
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+0);
+      SET_PIX(bx+0,y0+1); SET_PIX(bx+4,y0+1);
+      SET_PIX(bx+0,y0+2); SET_PIX(bx+4,y0+2);
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+3);
+      SET_PIX(bx+0,y0+4); SET_PIX(bx+2,y0+4);
+      SET_PIX(bx+0,y0+5); SET_PIX(bx+3,y0+5);
+      SET_PIX(bx+0,y0+6); SET_PIX(bx+4,y0+6); }
+    
+    // Draw "T" at x0+60
+    { int bx = x0 + 60;
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+0);
+      for (int r = 1; r < 7; r++) SET_PIX(bx+2, y0+r); }
+    
+    // Draw "-" at x0+66
+    { int bx = x0 + 66;
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+3); }
+    
+    // Draw "D" at x0+72
+    { int bx = x0 + 72;
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+0);
+      SET_PIX(bx+0,y0+1); SET_PIX(bx+4,y0+1);
+      SET_PIX(bx+0,y0+2); SET_PIX(bx+4,y0+2);
+      SET_PIX(bx+0,y0+3); SET_PIX(bx+4,y0+3);
+      SET_PIX(bx+0,y0+4); SET_PIX(bx+4,y0+4);
+      SET_PIX(bx+0,y0+5); SET_PIX(bx+4,y0+5);
+      for (int c = 0; c < 4; c++) SET_PIX(bx+c, y0+6); }
+    
+    // Draw "O" at x0+78
+    { int bx = x0 + 78;
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+0);
+      SET_PIX(bx+0,y0+1); SET_PIX(bx+4,y0+1);
+      SET_PIX(bx+0,y0+2); SET_PIX(bx+4,y0+2);
+      SET_PIX(bx+0,y0+3); SET_PIX(bx+4,y0+3);
+      SET_PIX(bx+0,y0+4); SET_PIX(bx+4,y0+4);
+      SET_PIX(bx+0,y0+5); SET_PIX(bx+4,y0+5);
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+6); }
+    
+    // Draw "O" at x0+84
+    { int bx = x0 + 84;
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+0);
+      SET_PIX(bx+0,y0+1); SET_PIX(bx+4,y0+1);
+      SET_PIX(bx+0,y0+2); SET_PIX(bx+4,y0+2);
+      SET_PIX(bx+0,y0+3); SET_PIX(bx+4,y0+3);
+      SET_PIX(bx+0,y0+4); SET_PIX(bx+4,y0+4);
+      SET_PIX(bx+0,y0+5); SET_PIX(bx+4,y0+5);
+      for (int c = 0; c < 5; c++) SET_PIX(bx+c, y0+6); }
+    
+    // Draw "M" at x0+90
+    { int bx = x0 + 90;
+      SET_PIX(bx+0,y0+0); SET_PIX(bx+4,y0+0);
+      SET_PIX(bx+0,y0+1); SET_PIX(bx+1,y0+1); SET_PIX(bx+3,y0+1); SET_PIX(bx+4,y0+1);
+      SET_PIX(bx+0,y0+2); SET_PIX(bx+2,y0+2); SET_PIX(bx+4,y0+2);
+      SET_PIX(bx+0,y0+3); SET_PIX(bx+4,y0+3);
+      SET_PIX(bx+0,y0+4); SET_PIX(bx+4,y0+4);
+      SET_PIX(bx+0,y0+5); SET_PIX(bx+4,y0+5);
+      SET_PIX(bx+0,y0+6); SET_PIX(bx+4,y0+6); }
+    
+    #undef SET_PIX
+}
+
+/*
  * I_FinishUpdate_e32 - Convert the 240x160 8bpp index buffer to RGB565
  * and flush it to the ST7789 display in strips (no rotation).
  */
@@ -211,9 +411,9 @@ void I_FinishUpdate_e32(const byte *srcBuffer, const byte *palette,
         );
     }
 
-    // Black bar: overlay the bottom DISP_BOTTOM_BLACK display rows with black
-    // to hide the panel's duplicated content (scroll-offset wraparound).
-    memset(s_linebuf, 0, FB_W * DISP_BOTTOM_BLACK * sizeof(unsigned short));
+    // Black bar with "AI-PASSPORT-DOOM" text overlay
+    // Bottom DISP_BOTTOM_BLACK display rows: black background + red text
+    draw_text_on_blackbar(s_linebuf, FB_W, DISP_BOTTOM_BLACK);
     bsp_display_draw_bitmap(
         DISP_X_OFF, BSP_LCD_H - DISP_BOTTOM_BLACK,
         FB_W, DISP_BOTTOM_BLACK,
