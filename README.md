@@ -2,13 +2,10 @@
 
 在 AI-Passport 电子胸牌上运行 DOOM。
 
-![cover-1](docs/cover-1.jpg)
-
-![cover-2](docs/cover-2.jpg)
-
-![cover-3](docs/cover-3.jpg)
-
-![cover-4](docs/cover-4.jpg)
+| | |
+|---|---|
+| ![cover-1](docs/cover-1.jpg) | ![cover-2](docs/cover-2.jpg) |
+| ![cover-3](docs/cover-3.jpg) | ![cover-4](docs/cover-4.jpg) |
 
 ![硬件](https://img.shields.io/badge/MCU-ESP32--C3-blue) ![屏幕](https://img.shields.io/badge/Screen-ST7789P3%20240x320-green) ![帧率](https://img.shields.io/badge/FPS-5~15-yellow)
 
