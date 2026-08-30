@@ -16,6 +16,11 @@
 │   └── doom/                   ← GBADoom 引擎封装
 │       ├── i_system_esp32.c    ← ESP32 平台层（显示/输入/计时）
 │       └── esp32_wad.c         ← WAD Flash mmap 加载
+├── docs/                       ← 项目文档
+│   ├── WAD-FILES.md            ← WAD 文件说明（哪个是原版、烧哪个）
+│   ├── 01-project-context.md   ← 项目上下文（AI 对话入口）
+│   ├── 02-engine-selection.md  ← 引擎选型分析
+│   └── 03-source-port-guide.md ← 源码移植参考
 ├── tools/
 │   ├── merge_pwad.py           ← IWAD + PWAD 合并 + 大写化修复
 │   ├── merge_wad.py            ← 固件 + WAD 合并为完整镜像
@@ -180,16 +185,26 @@ idf.py -p COM4 monitor
 
 ## 文档
 
+### 项目文档
+
 | 文件 | 内容 |
 |------|------|
-| [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | 项目上下文（新对话入口） |
-| [过程文章/01](过程文章/01-idea-and-feasibility.md) | 可行性分析 |
-| [过程文章/02](过程文章/02-deep-dive-gbadoom-source.md) | GBADoom 源码分析 |
-| [过程文章/03](过程文章/03-esp-idf-project-skeleton.md) | ESP-IDF 工程搭建 |
-| [过程文章/04](过程文章/04-flashing-guide.md) | 烧录指南（WAD 管线详解） |
-| [过程文章/05](过程文章/05-display-bottom-repeat-fix.md) | 底部重复排查 |
-| [过程文章/06](过程文章/06-flash-procedure.md) | 完整构建烧录流程 |
-| [过程文章/07](过程文章/07-memory-optimization.md) | 内存优化全过程 |
+| [WAD 文件说明](docs/WAD-FILES.md) | 各 WAD 文件用途、管线流程、烧哪个 |
+| [项目上下文](docs/01-project-context.md) | 硬件规格、决策记录、实施计划（AI 对话入口） |
+| [引擎选型分析](docs/02-engine-selection.md) | GBADoom / rp2040-doom / Doomgeneric 等对比 |
+| [源码移植参考](docs/03-source-port-guide.md) | Doom 源码移植社区指南 |
+
+### 开发过程文章（本地，不入 git）
+
+| 文件 | 内容 |
+|------|------|
+| [01-可行性分析](过程文章/01-idea-and-feasibility.md) | 硬件评估与方案可行性 |
+| [02-源码分析](过程文章/02-deep-dive-gbadoom-source.md) | GBADoom 源码结构分析 |
+| [03-工程搭建](过程文章/03-esp-idf-project-skeleton.md) | ESP-IDF 项目骨架搭建 |
+| [04-烧录指南](过程文章/04-flashing-guide.md) | WAD 管线与烧录流程详解 |
+| [05-显示修复](过程文章/05-display-bottom-repeat-fix.md) | 底部重复行排查 |
+| [06-构建流程](过程文章/06-flash-procedure.md) | 完整构建烧录 + 已知显示问题 |
+| [07-内存优化](过程文章/07-memory-optimization.md) | Zone/Overflow/静态化全过程 |
 
 ## License
 
