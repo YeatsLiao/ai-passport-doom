@@ -64,11 +64,12 @@ void app_main(void)
         return;
     }
 
-    // Launch Doom engine on core 0 with 32KB stack
+    // Launch Doom engine on core 0 with 16KB stack
+    // (big arrays moved to static storage, stack doesn't need 32KB)
     xTaskCreatePinnedToCore(
         doom_task,
         "doom",
-        32768,    // stack size
+        16384,    // stack size (reduced from 32768)
         NULL,
         5,        // priority (higher than idle)
         NULL,

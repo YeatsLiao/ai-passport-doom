@@ -51,8 +51,12 @@ clock_t __wrap_clock(void)
 // The engine renders 240x160 8-BIT palette indices (SCREENWIDTH=120 in
 // doomdef.h is measured in shorts; byte pitch is 240). s_backbuffer holds
 // those indices. We convert to RGB565 in strips to save RAM.
-static unsigned short *s_backbuffer;   // FB_W * FB_H bytes (engine writes here)
-static unsigned short *s_linebuf;      // FB_W * STRIP_H shorts (strip staging)
+// ESP32: static framebuffer + linebuf in .bss (avoids heap pressure)
+// FB_W=240, FB_H=160 defined below; hardcode here for file-scope array sizes
+static byte s_backbuffer_data[240 * 160];           // 38400 bytes
+static unsigned short s_linebuf_data[240 * 16];     // 7680 bytes (16 rows max)
+static unsigned short *s_backbuffer = (unsigned short *)s_backbuffer_data;
+static unsigned short *s_linebuf = s_linebuf_data;
 
 /* ---- Palette ---- */
 // Store palette as RGB565 shorts (matching ST7789 native format)
@@ -100,27 +104,16 @@ void I_InitScreen_e32(void)
 void I_CreateBackBuffer_e32(void)
 {
     // Engine framebuffer: 240x160 bytes of palette indices
-    s_backbuffer = malloc(FB_W * FB_H);
-    // Line buffer: sized to cover both strip rendering (STRIP_H*VSCALE rows)
-    // and the bottom black bar (DISP_BOTTOM_BLACK rows), whichever is larger.
-    const int linebuf_rows = STRIP_H * VSCALE > DISP_BOTTOM_BLACK
-                             ? STRIP_H * VSCALE : DISP_BOTTOM_BLACK;
-    s_linebuf = malloc(FB_W * linebuf_rows * sizeof(unsigned short));
+    // ESP32: framebuffer and linebuf are static arrays, no malloc needed
+    memset(s_backbuffer_data, 0, sizeof(s_backbuffer_data));
+    memset(s_linebuf_data, 0, sizeof(s_linebuf_data));
 
-    if (!s_backbuffer || !s_linebuf) {
-        ESP_LOGE(TAG, "Framebuffer alloc failed! backbuffer=%p linebuf=%p",
-                 s_backbuffer, s_linebuf);
-        abort();
-    }
-
-    memset(s_backbuffer, 0, FB_W * FB_H);
-
-    ESP_LOGI(TAG, "FB: %p (%d bytes 8bpp) + %p (linebuf %dx%d shorts, %d bytes)",
-             s_backbuffer, FB_W * FB_H,
-             s_linebuf, FB_W, linebuf_rows, FB_W * linebuf_rows * 2);
+    ESP_LOGI(TAG, "FB: %p (%d bytes 8bpp static) + %p (linebuf %dx%d shorts, %d bytes static)",
+             s_backbuffer_data, FB_W * FB_H,
+             s_linebuf_data, FB_W, 16, FB_W * 16 * 2);
 
     // Clear the whole 240x320 panel (leftovers from previous firmware)
-    memset(s_linebuf, 0, FB_W * linebuf_rows * sizeof(unsigned short));
+    memset(s_linebuf_data, 0, sizeof(s_linebuf_data));
     for (int y = 0; y < BSP_LCD_H; y += STRIP_H) {
         int h = (y + STRIP_H > BSP_LCD_H) ? BSP_LCD_H - y : STRIP_H;
         bsp_display_draw_bitmap(0, y, BSP_LCD_W, h, s_linebuf);
