@@ -17,24 +17,19 @@
 ## 项目结构
 
 ```
-├── main/                       ← app_main + FreeRTOS Doom task
-├── components/
-│   ├── bsp_doom/               ← 显示 (ST7789P3 SPI) + 按键 (ADC)
-│   └── doom/                   ← GBADoom 引擎封装
-│       ├── i_system_esp32.c    ← ESP32 平台层（显示/输入/计时）
-│       └── esp32_wad.c         ← WAD Flash mmap 加载
-├── docs/                       ← 项目文档
-│   ├── WAD-FILES.md            ← WAD 文件说明与管线
-│   ├── issues.md               ← 问题记录（已解决 + 待解决）
-│   ├── 01-project-context.md   ← 项目上下文
-│   ├── 02-engine-selection.md  ← 引擎选型分析
-│   └── 03-source-port-guide.md ← 源码移植参考
-├── tools/                      ← WAD 处理与构建脚本
-├── DOOM1.WAD                   ← 原版 Shareware
-├── DOOM1_GBA.WAD               ← 合并 GBA 补丁后
-├── DOOM1_PROCESSED.WAD         ← 最终烧录版（← 烧这个）
-├── partitions.csv              ← factory 3MB + wad ~4.94MB
-└── sdkconfig.defaults          ← 关闭 BLE/WiFi，优化内存
+ai-passport-doom/
+├── .github/workflows/    ✅ CI 自动构建
+├── components/           ✅ ESP-IDF 标准组件结构
+│   ├── bsp_doom/         ✅ 硬件抽象层
+│   └── doom/             ✅ 引擎封装
+├── docs/                 ✅ 文档（刚整理过）
+├── main/                 ✅ 入口
+├── tools/                ✅ 构建脚本
+├── DOOM1*.WAD            ✅ WAD 数据
+├── DOOM1_PROCESSED.WAD   ✅ 最终烧录版（← 烧这个）
+├── partitions.csv        ✅ 分区表
+├── sdkconfig.defaults    ✅ 构建配置
+└── CMakeLists.txt        ✅ 顶层构建
 ```
 
 ## 快速开始
