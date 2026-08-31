@@ -124,8 +124,22 @@ idf.py -p COM4 monitor
 
 **标题**：DOOM
 
-**简介**：
+**中文简介**：
 
 GBADoom × AI-Passport 移植项目。把 PrBoom 引擎跑在巴掌大的可穿戴胸牌上，彩色屏幕实时渲染 3D 画面，三键操作即开即玩。
+
+操作说明：
+- UP 键：前进
+- DOWN 键：右转 / 确认 / 开门
+- OK 键：开枪
+
+**English Description**：
+
+GBADoom × AI-Passport port. Running the PrBoom engine on a palm-sized wearable badge with a color screen rendering real-time 3D graphics. Three-button controls, pick up and play.
+
+Controls:
+- UP: Move forward
+- DOWN: Turn right / Confirm / Open doors
+- OK: Shoot
 
 **源代码**：https://github.com/YeatsLiao/ai-passport-doom
