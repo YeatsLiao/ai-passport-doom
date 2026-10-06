@@ -17,7 +17,7 @@
 | Flash | 8MB |
 | 屏幕 | ST7789P3 240×320 RGB565，SPI @ 40MHz |
 | 按键 | UP / DOWN / OK（ADC 分压，3 档） |
-| 引擎 | [GBADoom](https://github.com/doomhack/GBADoom)（PrBoom 分支，纯 C） |
+| 引擎 | [GBADoom](https://github.com/YeatsLiao/GBADoom)（YeatsLiao fork，分支 `esp32-ai-passport`，PrBoom 分支，纯 C） |
 
 ## 项目结构
 
@@ -46,8 +46,11 @@ ai-passport-doom/
 git clone https://github.com/YeatsLiao/ai-passport-doom.git
 cd ai-passport-doom
 
-# GBADoom 引擎（必须放在同级目录）
+# GBADoom 引擎（必须放在同级目录，并切到 ESP32 专用分支）
 git clone https://github.com/YeatsLiao/GBADoom.git
+cd GBADoom
+git checkout esp32-ai-passport
+cd ..
 ```
 
 > CMakeLists.txt 中 `GBADOOM_PATH` 指向 `../GBADoom`，路径不同需修改。
